@@ -7,17 +7,20 @@ from flask import Flask, request
 
 app = Flask(__name__)
 
+VERIFY_TOKEN = "lxhong"
+ACCESS_TOKEN = "EAAFRZBjzD2MwBAExMeQZAPQVZCZCQ0TLzFw74vOYTpBlVmJywEIXCa5pX74m7C8muFUHZBua9LzS6ZCdHwChdXs75NGkicvNsvXAJxM3ao5YBe5DKgpABJQUXtfPZBgOnfGFwMCZCeHPqCJDQka4K2qVundtDhs3wZCYfg3O3oeXydwZDZD"
 
 @app.route('/', methods=['GET'])
 def verify():
     # when the endpoint is registered as a webhook, it must
     # return the 'hub.challenge' value in the query arguments
     if request.args.get("hub.mode") == "subscribe" and request.args.get("hub.challenge"):
-        if not request.args.get("hub.verify_token") == os.environ["VERIFY_TOKEN"]:
+        if not request.args.get("hub.verify_token") == VERIFY_TOKEN:
             return "Verification token mismatch", 403
         return request.args["hub.challenge"], 200
 
     return "Hello world", 200
+
 
 @app.route('/', methods=['POST'])
 def webook():
@@ -31,11 +34,18 @@ def webook():
 
         for entry in data["entry"]:
             for messaging_event in entry["messaging"]:
-                # https://developers.facebook.com/docs/messenger-platform/webhook-reference/message-received
+
                 if messaging_event.get("message"):  # someone sent us a message
+
                     sender_id = messaging_event["sender"]["id"]        # the facebook ID of the person sending you the message
-                    message = messaging_event["message"] # message from user
-                    on_message_received(sender_id, message)
+                    recipient_id = messaging_event["recipient"]["id"]  # the recipient's ID, which should be your page's facebook ID
+                    message_text = messaging_event["message"]["text"]  # the message's text
+
+
+                    if message_text == "hi":
+                        send_message(sender_id, "hello to my favorite songs!")
+                    else:
+                        send_message(sender_id, "got it, thanks!")
 
                 if messaging_event.get("delivery"):  # delivery confirmation
                     pass
@@ -43,59 +53,40 @@ def webook():
                 if messaging_event.get("optin"):  # optin confirmation
                     pass
 
-                # https://developers.facebook.com/docs/messenger-platform/webhook-reference/postback-received
                 if messaging_event.get("postback"):  # user clicked/tapped "postback" button in earlier message
-                    sender_id = messaging_event["sender"]["id"]  # the facebook ID of the person sending you the message
-                    payload = messaging_event["postback"]["payload"]  # payload from user
-                    on_postback_received(sender_id, payload)
+                    pass
 
     return "ok", 200
 
-def on_message_received(sender_id, message):
-    if not message.get("text"):
-        return
 
-    message_text = message["text"]
-    if message_text == "hello":
-        send_text_message(sender_id, "hi")
-    else:
-        send_text_message(sender_id, "Invalid command, please send hello")
+def send_message(recipient_id, message_text):
 
-def on_postback_received(sender_id, payload):
+    log("sending message to {recipient}: {text}".format(recipient=recipient_id, text=message_text))
 
-    pass
-
-# Send Message
-# https://developers.facebook.com/docs/messenger-platform/send-api-reference/text-message
-def send_text_message(recipient_id, message_text):
-    data = json.dumps({
-      "recipient":{
-        "id":recipient_id
-      },
-      "message":{
-        "text":message_text
-      }
-    })
-    call_send_api(data)
-
-# Response to Facebook Messenger API
-def call_send_api(data):
     params = {
-        "access_token": os.environ["PAGE_ACCESS_TOKEN"]
+        "access_token": ACCESS_TOKEN
     }
     headers = {
         "Content-Type": "application/json"
     }
+    data = json.dumps({
+        "recipient": {
+            "id": recipient_id
+        },
+        "message": {
+            "text": message_text
+        }
+    })
     r = requests.post("https://graph.facebook.com/v2.6/me/messages", params=params, headers=headers, data=data)
     if r.status_code != 200:
         log(r.status_code)
         log(r.text)
 
-# Simple wrapper for logging to stdout on heroku
-def log(message):
+
+def log(message):  # simple wrapper for logging to stdout on heroku
     print str(message)
     sys.stdout.flush()
 
-# Main app
+
 if __name__ == '__main__':
     app.run(debug=True)
